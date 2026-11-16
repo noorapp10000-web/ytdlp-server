@@ -34,7 +34,7 @@ BASE = {
     "ffmpeg_location": FF,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "ios"]
+            "player_client": ["android"]
         }
     }
 }
@@ -101,10 +101,10 @@ def download(url: str, kind: str = "video", height: int = 0, abr: int = 128):
     opts = {**BASE, "outtmpl": os.path.join(tmp, "%(title).80s.%(ext)s")}
     if kind == "audio":
         q = str(min(max(abr, 64), 320))
-        opts.update(format="bestaudio/best", postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": q}])
+        opts.update(format="ba/b", postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": q}])
     else:
         h = f"[height<={height}]" if height else ""
-        opts.update(format=f"bv*{h}+ba/b{h}/bv*+ba/b", merge_output_format="mp4")
+        opts.update(format=f"b{h}/b/best", merge_output_format="mp4")
     try:
         with yt_dlp.YoutubeDL(opts) as y: y.download([url])
     except Exception as e:
