@@ -32,9 +32,10 @@ BASE = {
     "quiet": True,
     "noplaylist": True,
     "ffmpeg_location": FF,
+    "remote_components": ["ejs:github"],
     "extractor_args": {
         "youtube": {
-            "player_client": ["android"]
+            "player_client": ["android", "web"]
         }
     }
 }
