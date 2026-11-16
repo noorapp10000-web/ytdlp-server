@@ -7,15 +7,47 @@ import yt_dlp, imageio_ffmpeg
 
 FF = imageio_ffmpeg.get_ffmpeg_exe()
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], expose_headers=["Content-Disposition"])
-BASE = {"quiet": True, "noplaylist": True, "ffmpeg_location": FF}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"]
+)
+
+# Optional cookie support if passed via env var or file
+COOKIE_FILE = os.path.join(tempfile.gettempdir(), "youtube_cookies.txt")
+if os.environ.get("YOUTUBE_COOKIES"):
+    try:
+        with open(COOKIE_FILE, "w") as f:
+            f.write(os.environ["YOUTUBE_COOKIES"])
+    except Exception:
+        COOKIE_FILE = None
+elif os.path.exists("cookies.txt"):
+    COOKIE_FILE = "cookies.txt"
+else:
+    COOKIE_FILE = None
+
+BASE = {
+    "quiet": True,
+    "noplaylist": True,
+    "ffmpeg_location": FF,
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android", "ios"]
+        }
+    }
+}
+if COOKIE_FILE:
+    BASE["cookiefile"] = COOKIE_FILE
 
 @app.get("/")
-def root(): return {"ok": True}
+def root(): 
+    return {"ok": True, "yt_dlp_version": getattr(yt_dlp.version, "__version__", "unknown")}
 
 @app.get("/search")
-def search(q: str, n: int = 12):
-    n = min(max(n, 1), 20)
+def search(q: str, n: int = 20):
+    n = min(max(n, 1), 100)
     try:
         with yt_dlp.YoutubeDL({**BASE, "skip_download": True, "extract_flat": True}) as y:
             d = y.extract_info(f"ytsearch{n}:{q}", download=False)
@@ -29,9 +61,15 @@ def search(q: str, n: int = 12):
         if not url: continue
         thumbs = e.get("thumbnails") or []
         thumb = e.get("thumbnail") or (thumbs[-1]["url"] if thumbs else None) or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None)
-        out.append({"id": vid, "url": url, "title": e.get("title"), "thumbnail": thumb,
-                    "duration": e.get("duration"), "uploader": e.get("uploader") or e.get("channel"),
-                    "views": e.get("view_count")})
+        out.append({
+            "id": vid, 
+            "url": url, 
+            "title": e.get("title"), 
+            "thumbnail": thumb,
+            "duration": e.get("duration"), 
+            "uploader": e.get("uploader") or e.get("channel"),
+            "views": e.get("view_count")
+        })
     return {"query": q, "results": out}
 
 @app.get("/info")
@@ -47,9 +85,15 @@ def info(url: str):
         if f.get("vcodec") not in (None, "none") and f.get("height"): heights.add(int(f["height"]))
         if f.get("acodec") not in (None, "none") and f.get("vcodec") in (None, "none") and f.get("abr"): abrs.add(int(f["abr"]))
     if not heights and d.get("height"): heights.add(int(d["height"]))
-    return {"title": d.get("title"), "thumbnail": d.get("thumbnail"), "duration": d.get("duration"),
-            "uploader": d.get("uploader"), "platform": d.get("extractor_key"),
-            "video_heights": sorted(heights, reverse=True), "audio_bitrates": sorted(abrs, reverse=True) or [128]}
+    return {
+        "title": d.get("title"), 
+        "thumbnail": d.get("thumbnail"), 
+        "duration": d.get("duration"),
+        "uploader": d.get("uploader"), 
+        "platform": d.get("extractor_key"),
+        "video_heights": sorted(heights, reverse=True), 
+        "audio_bitrates": sorted(abrs, reverse=True) or [128]
+    }
 
 @app.get("/download")
 def download(url: str, kind: str = "video", height: int = 0, abr: int = 128):
