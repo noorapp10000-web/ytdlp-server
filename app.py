@@ -13,6 +13,27 @@ BASE = {"quiet": True, "noplaylist": True, "ffmpeg_location": FF}
 @app.get("/")
 def root(): return {"ok": True}
 
+@app.get("/search")
+def search(q: str, n: int = 12):
+    n = min(max(n, 1), 20)
+    try:
+        with yt_dlp.YoutubeDL({**BASE, "skip_download": True, "extract_flat": True}) as y:
+            d = y.extract_info(f"ytsearch{n}:{q}", download=False)
+    except Exception as e:
+        raise HTTPException(400, str(e)[:300])
+    out = []
+    for e in d.get("entries") or []:
+        if not e: continue
+        vid = e.get("id") or ""
+        url = e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else None)
+        if not url: continue
+        thumbs = e.get("thumbnails") or []
+        thumb = e.get("thumbnail") or (thumbs[-1]["url"] if thumbs else None) or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None)
+        out.append({"id": vid, "url": url, "title": e.get("title"), "thumbnail": thumb,
+                    "duration": e.get("duration"), "uploader": e.get("uploader") or e.get("channel"),
+                    "views": e.get("view_count")})
+    return {"query": q, "results": out}
+
 @app.get("/info")
 def info(url: str):
     try:
