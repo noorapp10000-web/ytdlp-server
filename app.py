@@ -73,6 +73,58 @@ def search(q: str, n: int = 20):
         })
     return {"query": q, "results": out}
 
+@app.get("/playlist")
+def playlist(url: str, limit: int = 100):
+    limit = min(max(limit, 1), 500)
+    list_match = re.search(r"[?&]list=([a-zA-Z0-9_-]+)", url)
+    target_url = f"https://www.youtube.com/playlist?list={list_match.group(1)}" if list_match else url
+    opts = {
+        **BASE,
+        "skip_download": True,
+        "extract_flat": True,
+        "noplaylist": False,
+        "playlist_items": f"1-{limit}"
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as y:
+            d = y.extract_info(target_url, download=False)
+    except Exception as e:
+        raise HTTPException(400, str(e)[:300])
+
+    if not d:
+        raise HTTPException(404, "Playlist not found")
+
+    raw_entries = d.get("entries") or []
+    out = []
+    for e in raw_entries:
+        if not e: continue
+        vid = e.get("id") or ""
+        item_url = e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else None)
+        if not item_url: continue
+        if not item_url.startswith("http"):
+            item_url = f"https://www.youtube.com/watch?v={vid}"
+        thumbs = e.get("thumbnails") or []
+        thumb = e.get("thumbnail") or (thumbs[-1]["url"] if thumbs else None) or (f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else None)
+        out.append({
+            "id": vid,
+            "url": item_url,
+            "title": e.get("title") or "Untitled",
+            "thumbnail": thumb,
+            "duration": e.get("duration"),
+            "uploader": e.get("uploader") or e.get("channel") or d.get("uploader")
+        })
+
+    thumb_pl = d.get("thumbnail") or (d.get("thumbnails")[-1]["url"] if d.get("thumbnails") else None) or (out[0]["thumbnail"] if out else None)
+
+    return {
+        "id": d.get("id"),
+        "title": d.get("title") or "قائمة تشغيل",
+        "uploader": d.get("uploader") or d.get("channel"),
+        "thumbnail": thumb_pl,
+        "total_count": len(out),
+        "entries": out
+    }
+
 @app.get("/info")
 def info(url: str):
     try:
